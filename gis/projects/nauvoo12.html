@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Nauvoo Parcels</title>
+		
+		<!--esri stylesheet-->
+		<link rel="stylesheet" href="https://js.arcgis.com/3.15/esri/css/esri.css">
+		<!--dojo stylesheet-->
+		<link rel="stylesheet" href="https://js.arcgis.com/3.15/dijit/themes/claro/claro.css">
+		
+		
+		
+		<!--my own style settings-->
+		<style>
+			#search {
+				display: block;
+				position: absolute;
+				z-index: 3;
+				top: 20px;
+				left: 37%;
+			}
+			#BasemapToggle {
+				position: absolute;
+				bottom: 50px;
+				right: 20px;
+				z-index: 50;
+			}
+			html, body {
+				height: 100%;
+				margin: 0;
+				padding: 0;
+			}
+			#map {
+				height: 100%;
+				position: absolute;
+				right: 0px;
+				top: 0px;
+				bottom: 0px;
+				width: 69%;
+			}
+			#treeContainer {
+				height: 50%;
+				width: 30%;
+				position: absolute;
+				top: 0px;
+				left: 5px;
+				display: flex;
+				float: left;
+			}
+			#deedInformation {
+				height: 50%;
+				width: 30%;
+				position: absolute;
+				left: 5px;
+				bottom: 0px;
+				float: left;
+				overflow: scroll;
+				display: flex;
+				flex-direction: column;
+			}
+			#scalebar {
+				position: absolute;
+				left: 33%;
+				bottom: 40px;
+			}
+			#BasemapToggle {
+				position: absolute;
+				bottom: 60px;
+			}
+		</style>
+		
+		<!--esri javascript-->
+		<script src="https://js.arcgis.com/3.15/"></script>
+		
+		
+		<script>
+		/*declare map variable*/
+		var map;
+			/*load needed modules and run function after completely loaded*/
+			require(["esri/map","esri/graphic", "esri/config", "esri/request", "esri/dijit/Popup", "esri/dijit/PopupTemplate", "esri/InfoTemplate", "esri/layers/ArcGISDynamicMapServiceLayer", "esri/layers/ImageParameters", "esri/renderers/SimpleRenderer", "esri/layers/LabelClass", "esri/symbols/SimpleFillSymbol", "esri/symbols/SimpleLineSymbol", "esri/Color", "esri/dijit/Scalebar", "esri/dijit/OverviewMap", "esri/layers/FeatureLayer", "esri/dijit/BasemapToggle", "esri/dijit/Search", "esri/dijit/AttributeInspector", "esri/geometry/Extent", "esri/layers/GraphicsLayer", "esri/graphicsUtils", "esri/symbols/SimpleMarkerSymbol", "esri/geometry/screenUtils", "esri/tasks/GeometryService", "esri/tasks/query", "esri/tasks/QueryTask", "esri/tasks/RelationshipQuery", "esri/tasks/FindTask", "esri/tasks/FindParameters", "esri/toolbars/draw", "dojox/grid/DataGrid", "dojo/store/Memory", "dojo/data/ObjectStore", "dijit/registry", "dojo/data/ItemFileReadStore", "dojo/parser", "dijit/layout/BorderContainer", "dijit/layout/ContentPane", "dojo/dom", "dojo/dom-class", "dojo/dom-construct", "dojo/on", "dojo/query", "dojo/_base/Color", "dojo/_base/array", "dojo/_base/window", "dijit/tree/ObjectStoreModel", "dijit/tree/ForestStoreModel", "dijit/Tree", "dojo/domReady!"], function(Map, Graphic, esriConfig, esriRequest, Popup, PopupTemplate, InfoTemplate, ArcGISDynamicMapServiceLayer, ImageParameters, SimpleRenderer, LabelClass, SimpleFillSymbol, SimpleLineSymbol, Color, Scalebar, OverviewMap, FeatureLayer, BasemapToggle, Search, AttributeInspector, Extent, GraphicsLayer, graphicsUtils, SimpleMarkerSymbol, screenUtils, GeometryService, Query, QueryTask, RelationshipQuery, FindTask, FindParameters, Draw, DataGrid, Memory, ObjectStore, registry, ItemFileReadStore, parser, BorderContainer, ContentPane, dom, domClass, domConstruct, on, query, Color, array, win, ObjectStoreModel, ForestStoreModel, Tree) {
+			
+				parser.parse();
+				
+				var sls = new SimpleLineSymbol("solid", new Color("#444444"), 3);
+				
+				var sfs = new SimpleFillSymbol("solid", sls, new Color([68, 68, 68, 0.25]));
+				
+				
+				var popupOptions = {
+					fillSymbol: sfs,
+					marginLeft: "20",
+					marginTop: "20"
+				};
+				
+				var popup = new Popup(popupOptions, domConstruct.create("div"));
+				
+				
+				/*create map*/
+				var map = new Map("map", {
+					center: [-91.38109, 40.5482],
+					zoom: 15,
+					basemap: "topo",
+					infoWindow: popup
+				});
+				
+				
+				var grid;
+				var tree;
+				var store;
+				var selectionSymbol = new SimpleLineSymbol().setColor("purple");
+				
+				var taxParcels = new FeatureLayer("http://arcgis.lib.byu.edu:6080/arcgis/rest/services/Nauvoo/parcel_deed_person2/FeatureServer/0", {
+					mode: FeatureLayer.MODE_SELECTION,
+					outFields: ["*"]
+				});
+				taxParcels.setSelectionSymbol(selectionSymbol);
+				taxParcels.on("selection-complete", findRelatedRecords);
+				map.addLayer(taxParcels);
+				
+				map.on("click", findParcels); //click on the dynamic map layer to make a selection
+				
+				function findRelatedRecords(evt) {
+					var features = evt.features;
+					var relatedTopsQuery = new RelationshipQuery();
+					relatedTopsQuery.outFields = ["*"];
+					relatedTopsQuery.relationshipId = 0;
+					
+					var featurearray = [];
+					for (i=0; i<features.length; i++) {
+						featurearray.push(features[i].attributes.objectid);
+					}
+					relatedTopsQuery.objectIds = featurearray;
+					
+					taxParcels.queryRelatedFeatures(relatedTopsQuery, function(relatedRecords) {
+					
+					
+						var atts=[];
+//						console.log("related recs: ", relatedRecords);
+					
+					
+						var relatedFeatures =[];
+						for (i=0; i<features.length; i++) {
+							var oid = features[i].attributes.objectid;
+							if (! relatedRecords.hasOwnProperty(oid)) {
+								console.log("No related records for ObjectID: ",
+								features[i].attributes.objectid);
+								continue;
+							}
+							else {
+								relatedFeatures.push(features[i]);
+							}
+						}
+					
+						for (i=0; i<relatedFeatures.length; i++) {
+							var oid = relatedFeatures[i].attributes.objectid;
+							atts.push(relatedFeatures[i].attributes);
+							feats = relatedRecords[oid].features;
+							var items=[];
+							for (j in feats) {
+								feats[j].attributes.parcel_oid=oid;
+								items.push(feats[j].attributes);
+							}
+							atts[i].children = items;	
+						}
+					
+					
+					
+					
+						/*var map = {"B": "Barnett", "BY": "Brigham Young", "C": "Commerce", "CC": "Commerce City", "F": "Fullmer", "JR": "Heirs of James Robison", "HT": "Herringshaw and Thompson", "HT2": "Herringshaw and Thompson Second", "H": "Hibbard", "H2": "Hibbard Second", "HS1": "Hyrum Smith", "HS2": "Hyrum Smith Second", "JS": "Joseph Smith", "K": "Kimball", "K2": "Kimball Second", "K3": "Kimball Third", "N": "Nauvoo", "R": "Robinson", "S": "Spears", "War": "Warrington", "W": "Wells", "Wor": "Worthington"}
+						var reverseMap = {};
+						
+						for (j in map){
+							if (!Object.prototype.hasOwnProperty.call(map, j)) continue
+							reverseMap[map[j]] = j
+							}
+
+						output = str.replace(item.platcode, function(c){
+						return reverseMap[c] || reverseMap[c.toLowerCase()].toUpperCase()
+						})
+
+						console.log(output)*/
+						
+						
+						
+					
+						var data = {
+							label: "id",
+							items: atts
+						};
+						
+						var store = new ItemFileReadStore({
+							data: data
+						});
+						
+						var mySort = {sort: [{attribute:"transdate_num", descending: false}]};
+						
+						var treeModel = new ForestStoreModel({
+							store: store,
+							query: {objectid: "*"},
+							rootId: "root",
+							rootLabel: "Parcels",
+							childrenAttrs: ["children"],
+							sort: mySort
+						});
+						
+						var oldTree = dijit.byId("treeOne");
+						if (oldTree) {
+							oldTree.destroyRecursive();
+						}
+						
+						tree = new Tree({
+							model: treeModel,
+							id: "treeOne",
+							onClick: function zoomRow(item) {
+								if (typeof item.children != "undefined") {
+									
+									var queryTask = new QueryTask("http://arcgis.lib.byu.edu:6080/arcgis/rest/services/Nauvoo/parcel_deed_person2/MapServer/0");
+								
+								
+									var query = new Query();
+									query.returnGeometry = true;
+									query.outFields = ["*"];
+									query.where = "objectid = " + item.objectid;
+									query.outSpatialReference = map.spatialReference;
+ 
+									queryTask.execute(query);
+									on(queryTask, "complete", function(featureset) {
+										map.graphics.clear();
+									
+										var graphic = featureset.featureSet.features[0];
+										graphic.setSymbol(sfs);
+									
+										var parcelExtent = featureset.featureSet.features[0].geometry.getExtent().expand(5.0);
+										map.setExtent(parcelExtent);
+					
+										map.graphics.add(graphic);
+									});
+								}
+								else {
+									var deed_id = item.deed_id.toString();
+									var ack = item.ack;
+									var comments = item.comments;
+									var grantee = item.grantee.toString();
+									var grantee_res = item.grantee_res.toString();
+									var grantor = item.grantor.toString();
+									var grantor_res = item.grantor_res.toString();
+									var location = item.location;
+									var parcels = item.parcels;
+									var price = item.price.toString();
+									var sources = item.sources;
+									var transdate = item.transdate;
+									var witness = item.witness;
+									var parcel_oid = item.parcel_oid;
+									document.getElementById("deedInformation").innerHTML = "Deed ID: " + deed_id + "<br />" + "Grantee: " + grantee + ", of " + grantee_res + "<br />" + "Grantor: " + grantor + ", of " + grantor_res + "<br />" + "Date: " + transdate + "<br />" + "Price: " + price + "<br />" + "Ack: " + ack + "<br />" + "Comments: " + comments + "<br />" + "Location: " + location + "<br />" + "Sources: " + sources + "<br />" + "Witness: " + witness + "<br />" + "Parcels: " + parcels;
+								
+								
+									var queryTask = new QueryTask("http://arcgis.lib.byu.edu:6080/arcgis/rest/services/Nauvoo/parcel_deed_person2/MapServer/0");
+								
+								
+									var query = new Query();
+									query.returnGeometry = true;
+									query.outFields = ["*"];
+									query.where = "objectid = " + item.parcel_oid;
+									query.outSpatialReference = map.spatialReference;
+ 
+									queryTask.execute(query);
+									on(queryTask, "complete", function(featureset) {
+										map.graphics.clear();
+									
+										var graphic = featureset.featureSet.features[0];
+										graphic.setSymbol(sfs);
+									
+										var parcelExtent = featureset.featureSet.features[0].geometry.getExtent().expand(5.0);
+										map.setExtent(parcelExtent);
+					
+										map.graphics.add(graphic);
+									});
+								
+								
+								}
+							}
+						}).placeAt("treeContainer");
+						tree.startup();
+					});
+				}
+				
+				
+				function findParcels(evt) {
+					map.graphics.clear();
+					var selectionQuery = new Query();
+					var tol = map.extent.getWidth()/map.width * 1;
+					var x = evt.mapPoint.x;
+					var y = evt.mapPoint.y;
+					var queryExtent = new Extent(x-tol, y-tol, x+tol, y+tol, evt.mapPoint.spatialReference);
+					selectionQuery.geometry = queryExtent;
+					taxParcels.selectFeatures(selectionQuery, FeatureLayer.SELECTION_NEW);
+					
+					/*taxParcels.on("selection-complete", function() {
+						var parcels = taxParcels.getSelectedFeatures();
+						var parcelExtent = parcels.geometry.expand(5.0);
+						map.setExtent(parcelExtent);
+					});*/
+				}
+				
+				
+				var imageParams = new ImageParameters();
+				imageParams.layerIds = [0, 1, 2];
+				imageParams.layerOption = ImageParameters.LAYER_OPTION_SHOW;
+				
+				var subs = new ArcGISDynamicMapServiceLayer("http://arcgis.lib.byu.edu:6080/arcgis/rest/services/Nauvoo/parcel_deed_person2/MapServer", {
+					imageParameters: imageParams
+				});
+				map.addLayer(subs);
+								
+				
+				
+				/*create overview map*/
+				var overviewMapDijit = new OverviewMap({
+					map: map,
+					visible: true
+				});
+				overviewMapDijit.startup();
+				
+				/*create scalebar*/
+				var scalebar = new Scalebar({
+					map: map,
+					scalebarUnit: "dual"
+				}, dom.byId("scalebar"));
+				
+				
+				/*create search bar*/
+				var search = new Search({
+					map: map,
+				}, dom.byId("search"));
+				
+				//select person, relationship query to parcels
+				
+				var persons = new FeatureLayer("http://arcgis.lib.byu.edu:6080/arcgis/rest/services/Nauvoo/parcel_deed_person2/FeatureServer/5");
+				
+				var deeds = new FeatureLayer("http://arcgis.lib.byu.edu:6080/arcgis/rest/services/Nauvoo/parcel_deed_person2/FeatureServer/3");
+				
+				var mysources = [{
+					featureLayer: persons,
+					searchFields: ["name"],
+					suggestionTemplate: "${name}",
+					exactMatch: false,
+					name: "People",
+					outFields: ["*"],
+					placeholder: "Last name, First name",
+					maxResults: 4,
+					maxSuggestions: 10,
+					enableSuggestions: true,
+					minCharacters: 2,
+					displayField: "name"
+				}];
+				var sources = mysources;
+				search.set("sources", sources);
+				search.startup();
+				
+				
+				//PEOPLE to PARCELS
+				
+				search.on("search-results", function(evt){
+					console.log('search results', evt);
+					
+					
+					var features = [];
+					var feats = evt.results[0];
+					features = [feats[0].feature];
+					var relatedTopsQuery = new RelationshipQuery();
+					relatedTopsQuery.outFields = ["*"];
+					relatedTopsQuery.relationshipId = 1;
+					
+					
+					var featurearray = [];
+					for (i=0; i<features.length; i++) {
+						featurearray.push(features[i].attributes.objectid);
+					}
+					relatedTopsQuery.objectIds = featurearray;
+					
+					var items = [];
+					
+					persons.queryRelatedFeatures(relatedTopsQuery, function(relatedRecords) {
+					
+					
+						var atts=[];
+						console.log("related recs: ", relatedRecords);
+					
+					
+						var relatedFeatures;
+					
+						var oid = features[0].attributes.objectid;
+						if (! relatedRecords.hasOwnProperty(oid)) {
+							console.log("No related records for ObjectID: ",
+							features[0].attributes.objectid);
+						}
+						else {
+							relatedFeatures = features[0];
+						}
+					
+					
+						oid = relatedFeatures.attributes.objectid;
+						atts.push(relatedFeatures.attributes);
+						feats = relatedRecords[oid].features;
+						for (j in feats) {
+							feats[j].attributes.parcel_oid=oid;
+							items.push(feats[j].attributes);
+						}
+						atts[0].children = items;	
+					
+						
+					
+					
+						//SECOND RELATIONSHIP QUERY
+						var relatedTopsQuery2 = new RelationshipQuery();
+						relatedTopsQuery2.outFields = ["*"];
+						relatedTopsQuery2.relationshipId = 0;
+					
+					
+						var featurearray2 = [];
+						for (i=0; i<items.length; i++) {
+							featurearray2.push(items[i].objectid);
+						}
+						relatedTopsQuery2.objectIds = featurearray2;
+					
+						
+						deeds.queryRelatedFeatures(relatedTopsQuery2, function(relatedRecords2) {
+					
+							var atts2=[];
+							console.log("related recs: ", relatedRecords2);
+					
+					
+							var relatedFeatures2 =[];
+							for (i=0; i<items.length; i++) {
+								var oid = items[i].objectid;
+								if (! relatedRecords2.hasOwnProperty(oid)) {
+									console.log("No related records for ObjectID: ", items[i].objectid);
+									continue;
+								}
+								else {
+									relatedFeatures2.push(items[i]);
+								}
+							}
+					
+							for (i=0; i<relatedFeatures2.length; i++) {
+								var oid = relatedFeatures2[i].objectid;
+								atts2.push(relatedFeatures2[i]);
+								feats = relatedRecords2[oid].features;
+								var items2=[];
+								for (j in feats) {
+									feats[j].attributes.parcel_oid=oid;
+									items2.push(feats[j].attributes);
+								}
+								atts2[i].children = items2;	
+							}
+							
+							map.graphics.clear();
+							
+							
+							
+							var data = {
+							label: "id2",
+							items: atts
+							};
+						
+							var store = new ItemFileReadStore({
+								data: data
+							});
+						
+							var treeModel = new ForestStoreModel({
+								store: store,
+								query: {objectid: "*"},
+								rootId: "root",
+								rootLabel: "People",
+								childrenAttrs: ["children"]
+							});
+						
+							var oldTree = dijit.byId("treeOne");
+							if (oldTree) {
+								oldTree.destroyRecursive();
+							}
+						
+							tree = new Tree({
+								model: treeModel,
+								id: "treeOne",
+								onClick: function zoomRow(item) {
+								if (typeof item.parcel_name != "undefined") {
+									
+									var queryTask = new QueryTask("http://arcgis.lib.byu.edu:6080/arcgis/rest/services/Nauvoo/parcel_deed_person2/MapServer/0");
+								
+								
+									var query = new Query();
+									query.returnGeometry = true;
+									query.outFields = ["*"];
+									query.where = "objectid = " + item.objectid;
+									query.outSpatialReference = map.spatialReference;
+ 
+									queryTask.execute(query);
+									on(queryTask, "complete", function(featureset) {
+										map.graphics.clear();
+									
+										var graphic = featureset.featureSet.features[0];
+										graphic.setSymbol(sfs);
+									
+										var parcelExtent = featureset.featureSet.features[0].geometry.getExtent().expand(5.0);
+										map.setExtent(parcelExtent);
+					
+										map.graphics.add(graphic);
+									});
+								}
+								else if (typeof item.location != "undefined") {
+									var deed_id = item.deed_id.toString();
+									var ack = item.ack;
+									var comments = item.comments;
+									var grantee = item.grantee.toString();
+									var grantee_res = item.grantee_res.toString();
+									var grantor = item.grantor.toString();
+									var grantor_res = item.grantor_res.toString();
+									var location = item.location;
+									var parcels = item.parcels;
+									var price = item.price.toString();
+									var sources = item.sources;
+									var transdate = item.transdate;
+									var witness = item.witness;
+									var parcel_oid = item.parcel_oid;
+									document.getElementById("deedInformation").innerHTML = "Deed ID: " + deed_id + "<br />" + "Grantee: " + grantee + ", of " + grantee_res + "<br />" + "Grantor: " + grantor + ", of " + grantor_res + "<br />" + "Date: " + transdate + "<br />" + "Price: " + price + "<br />" + "Ack: " + ack + "<br />" + "Comments: " + comments + "<br />" + "Location: " + location + "<br />" + "Sources: " + sources + "<br />" + "Witness: " + witness + "<br />" + "Parcels: " + parcels;
+								
+								
+									var queryTask = new QueryTask("http://arcgis.lib.byu.edu:6080/arcgis/rest/services/Nauvoo/parcel_deed_person2/MapServer/0");
+								
+								
+									var query = new Query();
+									query.returnGeometry = true;
+									query.outFields = ["*"];
+									
+									//query.where = "objectid = " + item.children[0].objectid;
+									query.outSpatialReference = map.spatialReference;
+									
+									
+									var string = '(';
+									var objectids2 = [];
+									for (i=0; i<item.children.length; i++) {
+										objectids2.push(item.children[i].objectid);
+										string += item.children[i].objectid;
+										string += ', ';
+									}
+									string = string.substring(0, string.length-2);
+									string += ')';
+							
+									query.where = "objectid in " + string;
+									
+									
+ 
+									queryTask.execute(query);
+									on(queryTask, "complete", function(featureset) {
+										map.graphics.clear();
+									
+										
+										for (i=0; i<featureset.featureSet.features.length; i++){
+										
+										graphic = featureset.featureSet.features[i];
+										graphic.setSymbol(sfs);
+										map.graphics.add(graphic);
+										}
+										
+										var myFeatureExtent = graphicsUtils.graphicsExtent(featureset.featureSet.features).expand(5.0);
+										map.setExtent(myFeatureExtent);
+					
+									});
+								}
+								else {
+									var description = item.description.toString();
+									var name = item.name.toString();
+									document.getElementById("deedInformation").innerHTML = name + "<br />" + description;
+									
+									
+									
+									var queryTask = new QueryTask("http://arcgis.lib.byu.edu:6080/arcgis/rest/services/Nauvoo/parcel_deed_person2/MapServer/0");
+								
+								
+									var query = new Query();
+									query.returnGeometry = true;
+									query.outFields = ["*"];
+									
+									//query.where = "objectid = " + item.children[0].objectid;
+									query.outSpatialReference = map.spatialReference;
+									
+									
+									var string = '(';
+									var objectids2 = [];
+									for (i=0; i<item.children.length; i++) {
+										for (j=0; j<item.children[i].children.length; j++){
+											objectids2.push(item.children[i].children[j].objectid);
+											string += item.children[i].children[j].objectid;
+											string += ', ';
+										}
+									}
+									string = string.substring(0, string.length-2);
+									string += ')';
+							
+									query.where = "objectid in " + string;
+									
+									
+ 
+									queryTask.execute(query);
+									on(queryTask, "complete", function(featureset) {
+										map.graphics.clear();
+									
+										
+										for (i=0; i<featureset.featureSet.features.length; i++){
+										
+										graphic = featureset.featureSet.features[i];
+										graphic.setSymbol(sfs);
+										map.graphics.add(graphic);
+										}
+										
+										var myFeatureExtent = graphicsUtils.graphicsExtent(featureset.featureSet.features).expand(5.0);
+										map.setExtent(myFeatureExtent);
+					
+									});
+									
+									
+									
+									
+								}
+							}
+							}).placeAt("treeContainer");
+							tree.startup();
+							
+							
+							/*var queryTask = new QueryTask("http://arcgis.lib.byu.edu:6080/arcgis/rest/services/Nauvoo/parcel_deed_person2/MapServer/0");
+								
+								
+							var query = new Query();
+							query.returnGeometry = true;
+							query.outFields = ["*"];
+							//query.where = "objectid = " + atts2[0].children[0].objectid;
+							query.outSpatialReference = map.spatialReference;
+							
+							var string = '(';
+							var objectids2 = [];
+							for (i=0; i<atts2.length; i++) {
+								objectids2.push(atts2[i].children[0].objectid);
+								string += atts2[i].children[0].objectid;
+								string += ', ';
+							}
+							string = string.substring(0, string.length-2);
+							string += ')';
+							
+							//query.objectids = objectids2;
+							query.where = "objectid in " + string;
+							//taxParcels.clearSelection();
+							
+							taxParcels.selectFeatures(query, FeatureLayer.SELECTION_NEW);*/
+							
+							
+							//NOT WORKING?
+							/*parcel = taxParcels.getSelectedFeatures();
+							extent = parcel[0].geometry.getExtent().expand(5.0);
+							map.setExtent(extent);*/
+							
+							
+						});
+					});
+				});
+				
+				
+				/*create a basemap toggle*/
+				var toggle = new BasemapToggle({
+					map: map,
+					basemap: "satellite"
+				}, "BasemapToggle");
+				toggle.startup();
+			});
+		</script>
+	</head>
+	
+	<!--create body with divs for map, search bar, and basemap toggle-->
+	<body class="claro">		
+		
+		<div id="search"></div>
+		<div id="scalebar"></div>
+		<div id="map" > 
+			<div id="BasemapToggle"></div>
+		</div>
+		<div id="treeContainer"></div>
+		<div id="deedInformation"></div>
+	</body>
+</html>

@@ -1,0 +1,42 @@
+@media screen and (max-width: 400px) {
+	.subtitle{
+	visibility: hidden;
+    line-height: 30px;
+	}
+}
+.subtitle{
+    line-height: 30px;
+	}
+#me{
+	margin-top: 50px;
+    height: 300px;
+}
+.img-responsive{
+    max-height: 400px;
+}
+.intro-header{
+    height: 70%;
+}
+.content-section-a{
+    padding: 0px;
+}
+.intro-message{
+    padding: 15%;
+}
+.main{
+    max-height: 100%;
+}
+.portfolio-item{
+    margin-bottom: 20px;
+}
+.col-sm-3{
+    height: 570px;
+}
+.hawaii{
+    max-height: 550px;
+    margin-top: 20px;
+}
+.ws{
+    height: 400px;
+    margin-top: 20px;
+}
